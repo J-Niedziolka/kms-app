@@ -11,7 +11,7 @@ struct pipeline_dev {
 	struct pipeline_dev *next;
 
 	uint32_t width;
-	uint32_t heigth;
+	uint32_t heigtht;
 	uint32_t size;
 	uint32_t handle;
 	uint8_t *map;
@@ -24,7 +24,20 @@ struct pipeline_dev {
 };
 
 static struct modeset_dev *modeset_list = 0;
-int main() {
+
+void drmGatherConnectors(){
+	drmModeConne
+}
+void userChooseConnector(struct pipeline_dev user_dev){
+	uint32_t connId = 0;
+	do{
+		scanf("Choose connector to be used: %d", &connId);
+	} while (connId ==NULL);
+
+	user_dev.connector = connId;
+}
+
+int main(int argc, char *argv[]) {
 	int drm_fd = open("/dev/dri/card1", O_RDWR | O_CLOEXEC);
 	if (drm_fd < 0) {
 		perror("Can't open DRM device");

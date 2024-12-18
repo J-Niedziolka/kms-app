@@ -25,9 +25,26 @@ struct pipeline_dev {
 
 static struct modeset_dev *modeset_list = 0;
 
-void drmGatherConnectors(){
-	drmModeConne
+void drmGatherConnectors(int drm_fd /*todo verify argument*/, drmModeRes resources){
+	drmModeConnector *connector = NULL;
+	drmModeConnector connectors[resources.count_connectors]; //todo verify if correct array size
+
+	for (int i = 0; i < resources.count_connectors; i++){
+		connector = drmModeGetConnector(drm_fd, resources.connectors[i]);
+		if (connector->connection == DRM_MODE_CONNECTED) {
+			connectors[i] = *connector;
+			printf("handled connector: %lu\n", connector->connector_id);
+			//break;
+		}
+		else {
+			//todo funcja printująca status connectora - przy listowaniu unhandled connectors można wskazać czemu jest unhandled
+			printf("unhandled connector: %lu\n", connector->connector_id);
+			drmModeFreeConnector(connector);
+			connector = NULL;
+		}
+	}
 }
+
 void userChooseConnector(struct pipeline_dev user_dev){
 	uint32_t connId = 0;
 	do{
@@ -52,6 +69,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	//gather connectors
+	printf("wcześniejsza funkcja:\n");
 	drmModeConnector *connector = NULL;
 	for (int i = 0; i < resources->count_connectors; i++) {
 		connector = drmModeGetConnector(drm_fd, resources->connectors[i]);
@@ -66,12 +84,17 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
+	printf("\nNowa funkcja:\n");
+	drmGatherConnectors(drm_fd, *resources);
+	userChooseConnector(modeset_list);
+
 	if(!connector){
 		fprintf(stderr, "Connected connector not found, stopping.");
 		drmModeFreeResources(resources);
 		close(drm_fd);
 		return -1;
 	}
+
 
 	drmModeModeInfo mode = connector->modes[0];
  drmModeCrtc *crtc = drmModeGetCrtc(drm_fd, resources->crtcs[0]);

@@ -312,6 +312,35 @@ err_destroy:
 	return ret;
 }
 
+void drmGatherConnectors(int drm_fd /*todo verify argument*/, drmModeRes resources){
+	drmModeConnector *connector = NULL;
+	drmModeConnector connectors[resources.count_connectors]; //todo verify if correct array size
+
+	for (int i = 0; i < resources.count_connectors; i++){
+		connector = drmModeGetConnector(drm_fd, resources.connectors[i]);
+		if (connector->connection == DRM_MODE_CONNECTED) {
+			connectors[i] = *connector;
+			printf("handled connector: %lu\n", connector->connector_id);
+			//break;
+		}
+		else {
+			//todo funcja printująca status connectora - przy listowaniu unhandled connectors można wskazać czemu jest unhandled
+			printf("unhandled connector: %lu\n", connector->connector_id);
+			drmModeFreeConnector(connector);
+			connector = NULL;
+		}
+	}
+}
+
+void userChooseConnector(struct pipeline_dev user_dev){
+	uint32_t connId = 0;
+	do{
+		scanf("Choose connector to be used: %d", &connId);
+	} while (connId ==NULL);
+
+	user_dev.connector = connId;
+}
+
 int main(int argc, char **argv)
 {
 	int ret, fd;

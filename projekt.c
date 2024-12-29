@@ -57,9 +57,9 @@ void drmGatherConnectors(int drm_fd){
 	// Pseudocode-ish
 
 	printf("\n--- Connectors ---\n");
-	drmModeRes* res = drmModeGetResources(fd);
+	drmModeRes* res = drmModeGetResources(drm_fd);
 	for (int i = 0; i < res->count_connectors; i++) {
-		drmModeConnector* conn = drmModeGetConnector(fd, res->connectors[i]);
+		drmModeConnector* conn = drmModeGetConnector(drm_fd, res->connectors[i]);
 		if (!conn) continue;
 
 		printf("[%2d] Connector %u: ", i, conn->connector_id);
@@ -89,7 +89,7 @@ void drmGatherConnectors(int drm_fd){
 	drmModeFreeResources(res);
 }
 
-void userChooseConnector(struct pipeline_dev user_dev){
+void userChooseConnector(struct pipeline_dev * user_dev){
 	/*uint32_t connId = 0;
 	uint32_t * connPtr = &connId;
 	do{
@@ -99,13 +99,18 @@ void userChooseConnector(struct pipeline_dev user_dev){
 	user_dev.connector = connId;*/
 	uint32_t connId = 0;
 	uint32_t* connPtr = &connId;
+	printf("przed petla do while\n");
 	do {
 		printf("Enter the index of a connector to use: ");
-		scanf("%d", &chosen_connector_index);
-		
+		scanf("%u", &connId);
+		//if (podany konektor jest na liście dostępnych konektorów):
+		*connPtr = connId;
+		//endif
 	} while (connPtr == NULL);
+	printf("wyszlismy z petli do while, connPtr: %u, connId: %u \n", *connPtr, connId);
 
-	user_dev.connector = connId
+	user_dev->connector = connId;
+	printf("tutaj koniec funkcji\n");
 }
 
 int main(int argc, char *argv[]) {
@@ -133,6 +138,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	drmGatherConnectors(drm_fd);
+	printf("wyszlismy z drmgatherconnectors\n");
 	//printf("konektor: %u\n", &handled_connectors[0]);
 
 	//gather connectors
@@ -150,8 +156,8 @@ int main(int argc, char *argv[]) {
 		}
 	}*/
 
-	userChooseConnector();
-	if(!connector){
+	userChooseConnector(modeset_devices);
+	if(! modeset_devices->connector){
 		fprintf(stderr, "Connected connector not found, stopping.");
 		drmModeFreeResources(resources);
 		close(drm_fd);
@@ -177,9 +183,9 @@ int main(int argc, char *argv[]) {
     close(drm_fd);
 	return 0;*/
 
-	// Create a dumb buffer: 
+	// Create a dumb buffer:
 	struct drm_mode_create_dumb create_req = { 0 };
-	create_req.width = chosen_width;
+	/*create_req.width = chosen_width;
 	create_req.height = chosen_height;
 	create_req.bpp = 32;
 	if (drmIoctl(fd, DRM_IOCTL_MODE_CREATE_DUMB, &create_req) < 0) {
@@ -221,7 +227,7 @@ int main(int argc, char *argv[]) {
 	// before exiting
 	drmModeSetCrtc(fd, saved_crtc->crtc_id, saved_crtc->buffer_id,
 		saved_crtc->x, saved_crtc->y,
-		&connector_id, 1, &saved_crtc->mode);
+		&connector_id, 1, &saved_crtc->mode);*/
 
 	// And free everything: drmModeFreeCrtc(saved_crtc);, drmModeRmFB(fd, fb_id);, munmap(fb_ptr, create_req.size), etc.
 }

@@ -92,7 +92,6 @@ int main(int argc, char *argv[]) {
 	printf("wcześniejsza funkcja:\n");
 	drmModeConnector *connector = NULL;
 	/*drmModeConnector* connector = NULL;
->>>>>>> 6965b75587ccc25194556f8ef78f6d948b7b5a62
 	for (int i = 0; i < resources->count_connectors; i++) {
 		connector = drmModeGetConnector(drm_fd, resources->connectors[i]);
 		if (connector->connection == DRM_MODE_CONNECTED) {
@@ -120,7 +119,6 @@ int main(int argc, char *argv[]) {
 
 	drmModeModeInfo mode = connector->modes[0];
 	/*drmModeModeInfo mode = connector->modes[0];
->>>>>>> 6965b75587ccc25194556f8ef78f6d948b7b5a62
  drmModeCrtc *crtc = drmModeGetCrtc(drm_fd, resources->crtcs[0]);
 
     // create framebuffer

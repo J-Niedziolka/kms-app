@@ -23,7 +23,7 @@ struct pipeline_dev {
 	drmModeCrtc *saved_crtc;
 };
 
-static struct modeset_dev *modeset_list = 0;
+static struct pipeline_dev *modeset_list = 0;
 
 void drmGatherConnectors(int drm_fd /*todo verify argument*/, drmModeRes resources){
 	drmModeConnector *connector = NULL;
@@ -33,25 +33,31 @@ void drmGatherConnectors(int drm_fd /*todo verify argument*/, drmModeRes resourc
 		connector = drmModeGetConnector(drm_fd, resources.connectors[i]);
 		if (connector->connection == DRM_MODE_CONNECTED) {
 			connectors[i] = *connector;
-			printf("handled connector: %lu\n", connector->connector_id);
+			printf("handled connector: %u\n", connectors[i].connector_id); /*todo verify parameter correctness*/
 			//break;
 		}
 		else {
 			//todo funcja printująca status connectora - przy listowaniu unhandled connectors można wskazać czemu jest unhandled
-			printf("unhandled connector: %lu\n", connector->connector_id);
+			printf("unhandled connector: %u\n", connector->connector_id);
 			drmModeFreeConnector(connector);
 			connector = NULL;
 		}
 	}
 }
 
-void userChooseConnector(struct pipeline_dev user_dev){
+void userChooseConnector(struct pipeline_dev *user_dev){
 	uint32_t connId = 0;
+	uint32_t * conn_ptr = &connId;
 	do{
-		scanf("Choose connector to be used: %d", &connId);
-	} while (connId ==NULL);
+		printf("Choose connector to be used: ");
+		scanf("%u", &connId);
+		printf("conn pointer value: %u\n", *conn_ptr);
+	} while (conn_ptr == NULL);
 
-	user_dev.connector = connId;
+	printf("dupa1\n");
+	//user_dev->connector = connId;
+	user_dev->connector = connId;
+	printf("2dupa\n");
 }
 
 int main(int argc, char *argv[]) {
@@ -74,11 +80,11 @@ int main(int argc, char *argv[]) {
 	for (int i = 0; i < resources->count_connectors; i++) {
 		connector = drmModeGetConnector(drm_fd, resources->connectors[i]);
 		if (connector->connection == DRM_MODE_CONNECTED) {
-			printf("handled connector: %lu\n", connector->connector_id);
+			printf("handled connector: %u\n", connector->connector_id);
 			//break;
 		}
 		else {
-			printf("unhandled connector: %lu\n", connector->connector_id);
+			printf("unhandled connector: %u\n", connector->connector_id);
 			drmModeFreeConnector(connector);
 			connector = NULL;
 		}

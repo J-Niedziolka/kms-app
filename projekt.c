@@ -29,7 +29,7 @@ void drmGatherFiledes() {
 	printf("todo handle it properly\n");
 }
 
-void drmGatherConnectors(int drm_fd){
+uint32_t * drmGatherConnectors(int drm_fd){
 	/*drmModeConnector* connector = NULL;
 	uint32_t temp_connectors[resources->count_connectors];
 	int conns = 0;
@@ -58,6 +58,7 @@ void drmGatherConnectors(int drm_fd){
 
 	printf("\n--- Connectors ---\n");
 	drmModeRes* res = drmModeGetResources(drm_fd);
+	struct pipeline_dev dev;
 	for (int i = 0; i < res->count_connectors; i++) {
 		drmModeConnector* conn = drmModeGetConnector(drm_fd, res->connectors[i]);
 		if (!conn) continue;

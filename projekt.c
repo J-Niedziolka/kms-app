@@ -23,39 +23,72 @@ struct pipeline_dev {
 	drmModeCrtc* saved_crtc;
 };
 
-static struct pipeline_dev *modeset_list = 0;
+static struct pipeline_dev modeset_device;
 
-void drmGatherConnectors(int drm_fd /*todo verify argument*/, drmModeRes resources){
+void drmGatherFiledes() {
+	printf("todo handle it properly\n");
+}
+
+void drmGatherConnectors(int drm_fd /*todo verify argument*/, drmModeRes resources, drmModeConnector *connector_array){
 	drmModeConnector *connector = NULL;
-	drmModeConnector connectors[resources.count_connectors]; //todo verify if correct array size
+	//drmModeConnector connectors[resources.count_connectors]; //todo verify if correct array size
 
 	for (int i = 0; i < resources.count_connectors; i++){
 		connector = drmModeGetConnector(drm_fd, resources.connectors[i]);
 		if (connector->connection == DRM_MODE_CONNECTED) {
-			connectors[i] = *connector;
-			printf("handled connector: %u\n", connectors[i].connector_id); /*todo verify parameter correctness*/
+			connector_array[i] = *connector;
+			printf("handled connector: %u\n", connector_array[i].connector_id); /*todo verify parameter correctness*/
 			//break;
 		}
 		else {
 			//todo funcja printująca status connectora - przy listowaniu unhandled connectors można wskazać czemu jest unhandled
 			printf("unhandled connector: %u\n", connector->connector_id);
-			drmModeFreeConnector(connector);
 			connector = NULL;
+			drmModeFreeConnector(connector);
 		}
 	}
 }
 
-void userChooseConnector(struct pipeline_dev *user_dev){
+void userChooseConnector(drmModeConnector * handled_connector_array, struct pipeline_dev *user_dev){
 	uint32_t connId = 0;
-	uint32_t * conn_ptr = &connId;
+	/*uint32_t * conn_ptr = &connId;
 	do{
 		printf("Choose connector to be used: ");
 		scanf("%u", &connId);
 		printf("conn pointer value: %u\n", *conn_ptr);
-	} while (conn_ptr == NULL);
+		user_dev->connector = connId;
+		printf("user_dev connector value: %u\n", user_dev->connector);
+	} while (conn_ptr == NULL); */
+
+	//printf("handled_connector_array.connector_id : %d", hauseusendled_connector_array.
+	printf("dostępne connectory check\n");
+	int array_lenght = sizeof(handled_connector_array)/sizeof(handled_connector_array[0]);
+	for(int i= 0; i < array_lenght; i++) {
+		printf("dostępne connectory, handled_connector_array[%d]: %u\n", i, handled_connector_array[i].connector_id);
+	}
+	printf("chyba nie wchodzi w petle xD");
+
+	int success = 0;
+	while (!success) {
+	    printf("Choose either of handled connectors: ");
+	    if (scanf("%u", &connId) == 1) {
+		for(int i= 0; i < array_lenght; i++) {
+			if(connId == handled_connector_array[i].connector_id) {
+				success = 1;
+				user_dev->connector = connId;
+			}
+		}
+		printf("Choosen connector is not in the array of supported connectors!\n");
+		success = 0;
+	    } else {
+		// Clear invalid input
+		while (getchar() != '\n');
+		printf("Invalid input, try again.\n");
+	    }
+	}
+
 
 	printf("dupa1\n");
-	//user_dev->connector = connId;
 	user_dev->connector = connId;
 	printf("2dupa\n");
 }
@@ -84,13 +117,15 @@ int main(int argc, char *argv[]) {
 		return -1;
 	}
 
-	drmGatherConnectors(drm_fd);
-	printf("wyszlismy z drmgatherconnectors\n");
+	//drmGatherConnectors(drm_fd);
+	//printf("wyszlismy z drmgatherconnectors\n");
 	//printf("konektor: %u\n", &handled_connectors[0]);
 
 	//gather connectors
 	printf("wcześniejsza funkcja:\n");
 	drmModeConnector *connector = NULL;
+	drmModeConnector available_connectors_array [resources->count_connectors];
+	printf("available connectors array[0] and [1]: %u, %u", available_connectors_array[0].connector_id, available_connectors_array[1].connector_id);
 	/*drmModeConnector* connector = NULL;
 	for (int i = 0; i < resources->count_connectors; i++) {
 		connector = drmModeGetConnector(drm_fd, resources->connectors[i]);
@@ -106,8 +141,8 @@ int main(int argc, char *argv[]) {
 	}*/
 
 	printf("\nNowa funkcja:\n");
-	drmGatherConnectors(drm_fd, *resources);
-	userChooseConnector(modeset_list);
+	drmGatherConnectors(drm_fd, *resources, available_connectors_array);
+	userChooseConnector(available_connectors_array, &modeset_device);
 
 	if(!connector){
 		fprintf(stderr, "Connected connector not found, stopping.");
@@ -138,7 +173,7 @@ int main(int argc, char *argv[]) {
 	return 0;*/
 
 	// Create a dumb buffer:
-	struct drm_mode_create_dumb create_req = { 0 };
+	//struct drm_mode_create_dumb create_req = { 0 };
 	/*create_req.width = chosen_width;
 	create_req.height = chosen_height;
 	create_req.bpp = 32;

@@ -122,11 +122,33 @@ int drmGatherModes(){
 	return 0;
 }
 
-void userChooseDrmMode(drmModeConnector choosenConnector){
-	int
+int userChooseDrmMode(drmModeConnector choosenConnector, struct pipeline_dev *user_dev, int runtimeMode){
+	int userChooseModeIndex;
+	if(!runtimeMode){
+		user_dev->mode = choosenConnector.modes[0];
+		//printf("drmMode: &p\n", user_dev->mode);
+		//printf("drmMode height and width: %u x %u\n", user_dev->mode.hdisplay, user_dev->mode.vdisplay);
+		userChooseModeIndex = 0;
+	}
+	else {
+		printf("Do you want to dump mode info? y/N : ");
+		char select = 'n';
+		scanf(" %c", &select);
+		if(select == 'y' || select == 'Y')
+			drmListAvailableModes(choosenConnector);
+
+		printf("Choose DRM Mode: ");
+		scanf("%d", &userChooseModeIndex);
+		user_dev->mode = choosenConnector.modes[userChooseModeIndex];
+	}
+
+	//printf("drmMode: &p\n", user_dev->mode);
+	printf("drmMode height and width: %u x %u\n", user_dev->mode.hdisplay, user_dev->mode.vdisplay);
+	return userChooseModeIndex;
 }
 
 int main(int argc, char *argv[]) {
+	int runtimeMode = 1;
 	int drm_fd = -1;
 	if (argc < 2){ //todo handle it properly
 		drmGatherFiledes();
@@ -170,12 +192,12 @@ int main(int argc, char *argv[]) {
 	}
 
 
-	printf("Do you want to dump mode info? y/N : ");
+	/*printf("Do you want to dump mode info? y/N : ");
 	char select = 'n';
 	scanf(" %c", &select);
 	if(select == 'y' || select == 'Y')
-		drmListAvailableModes(*connector);
-	userChooseDrmMode();
+		drmListAvailableModes(*connector);*/
+	userChooseDrmMode(*connector, &modeset_device, runtimeMode);
 
 	drmModeModeInfo mode = connector->modes[0];
 	/*drmModeModeInfo mode = connector->modes[0];

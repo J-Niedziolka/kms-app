@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <fcntl.h>
+#include <sys/select.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <xf86drm.h>
@@ -29,7 +30,7 @@ void drmGatherFiledes() {
 	printf("todo handle it properly\n");
 }
 
-int drmGatherConnectors(int drm_fd, drmModeRes * resources, drmModeConnector *connector_array){
+int drmGatherConnectors(int drm_fd, drmModeRes * resources, drmModeConnector **connector_array){
 	int filled = 0;
 
 	for (int i = 0; i < resources->count_connectors; i++){
@@ -38,47 +39,91 @@ int drmGatherConnectors(int drm_fd, drmModeRes * resources, drmModeConnector *co
 			continue;
 
 		if (conn->connection == DRM_MODE_CONNECTED) {
-			connector_array[filled] = *conn;
-			printf("handled connector: %u\n", connector_array[filled].connector_id); //todo verify parameter correctness
+			connector_array[filled] = conn;
+			printf("handled connector: %u\n", connector_array[filled]->connector_id); //todo verify parameter correctness
 			filled++;
 		}
 		else {
 			//todo funcja printująca status connectora - przy listowaniu unhandled connectors można wskazać czemu jest unhandled
 			printf("unhandled connector: %u\n", conn->connector_id);
+			drmModeFreeConnector(conn); //todo pozbylem się unhandled connectorów, gdybym chciał je dodatkowo obsłużyć
+				//to muszę pozbyć się tego free() - pewnie będzie segfault albo śmieciowe wyniki
 			conn = NULL;
+			continue;
 		}
-		drmModeFreeConnector(conn);
 	}
 	return filled;
 }
 
-void userChooseConnector(drmModeConnector * handled_connector_array, int lenght, struct pipeline_dev *user_dev){
+int userChooseConnector(drmModeConnector ** handled_connector_array, int lenght, struct pipeline_dev *user_dev){
 	uint32_t connId = 0;
+	int choosenIndex = -1;
 	int success = 0;
-	for (int i = 0; i < lenght; i++){
-		printf("Connector[%d] ID = %u\n", i, handled_connector_array[i].connector_id);
-	}
 
 	while (!success) {
-	    printf("Choose either of handled connectors: ");
-	    if (scanf("%u", &connId) == 1) {
-		for(int i= 0; i < lenght; i++) {
-			if(connId == handled_connector_array[i].connector_id) {
-				success = 1;
-				user_dev->connector = connId;
-				break;
-			} else if (i == lenght-1 && connId != handled_connector_array[i].connector_id) {
+		printf("Choose either of handled connectors: ");
+		if (scanf("%u", &connId) == 1) {
+			printf("wybrales - %d\n", connId);
+			for(int i= 0; i < lenght; i++) {
+				if(connId == handled_connector_array[i]->connector_id) {
+					printf("weszlo w petle!\n");
+					choosenIndex = i;
+					user_dev->connector = connId;
+					success = 1;
+					printf("sukces!\n");
+					break;
+				//todo: refactor, poprawić indentację poniżej
+				//} //todo tu jest bug: jeśli 4 linie poniżej są zakomentowane, to z jakiegoś powodu konektor ustawia się poprawnie, ale i tak printuje loga poniżej przy wybraniu innego niż pierwszy z dostępnych konektorów
+			} else if (i == lenght-1 && connId != handled_connector_array[i]->connector_id) {
 				printf("Choosen connector is not in the array of supported connectors!\n");
 			} else {
 				continue;
 			}
+			if (!success) {
+				printf("Choosen connector is not in the array of supported connectors!\n");
+			}
 		}
-	    } else {
+	} else {
 		// clear invalid input
 		while (getchar() != '\n');
 		printf("Invalid input, try again.\n");
 	    }
 	}
+	return choosenIndex;
+}
+
+/*typedef struct _drmModeModeInfo {
+uint32_t clock;
+	uint16_t hdisplay, hsync_start, hsync_end, htotal, hskew;
+	uint16_t vdisplay, vsync_start, vsync_end, vtotal, vscan;
+
+	uint32_t vrefresh;
+
+	uint32_t flags;
+	uint32_t type;
+	char name[DRM_DISPLAY_MODE_LEN];
+} drmModeModeInfo, *drmModeModeInfoPtr;
+
+*/
+void drmListAvailableModes(drmModeConnector choosenConnector){
+	int availableModeNumber = choosenConnector.count_modes;
+	drmModeModeInfo modesArray [availableModeNumber];
+
+	for(int i = 0; i < availableModeNumber; i++)
+		modesArray[i] = choosenConnector.modes[i];
+
+	for(int i = 0; i < availableModeNumber; i++){
+		printf("modesArray Mode[%d] info: clock: %u\t", i, modesArray[i].clock);
+		printf("display height (Vert.): %u, display width (Hor.): %u", modesArray[i].hdisplay, modesArray[i].vdisplay);
+	}
+}
+
+int drmGatherModes(){
+	return 0;
+}
+
+void userChooseDrmMode(drmModeConnector choosenConnector){
+	int
 }
 
 int main(int argc, char *argv[]) {
@@ -107,10 +152,15 @@ int main(int argc, char *argv[]) {
 
 	//gathering connectors
 	drmModeConnector *connector = NULL;
-	drmModeConnector available_connectors_array [resources->count_connectors];
+	drmModeConnector *available_connectors_array [resources->count_connectors];
 
 	int connected_count = drmGatherConnectors(drm_fd, resources, available_connectors_array);
-	userChooseConnector(available_connectors_array, connected_count, &modeset_device);
+
+	int choosen_connector_index = userChooseConnector(available_connectors_array, connected_count, &modeset_device);
+	if (choosen_connector_index < 0) {
+		//todo handle this case
+	}
+	connector = available_connectors_array[choosen_connector_index];
 
 	if(!connector){
 		fprintf(stderr, "Connected connector not found, stopping.");
@@ -119,6 +169,13 @@ int main(int argc, char *argv[]) {
 		return -1;
 	}
 
+
+	printf("Do you want to dump mode info? y/N : ");
+	char select = 'n';
+	scanf(" %c", &select);
+	if(select == 'y' || select == 'Y')
+		drmListAvailableModes(*connector);
+	userChooseDrmMode();
 
 	drmModeModeInfo mode = connector->modes[0];
 	/*drmModeModeInfo mode = connector->modes[0];

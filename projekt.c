@@ -181,46 +181,111 @@ int userChooseDrmEncoder(int drm_fd, drmModeConnector choosenConnector, struct p
 	return userChooseEncoderIndex;
 }
 
-void drmListAvailableCrtcs(){
+/*
+ * Helper function that lists all possible CRTCs for the given encoder.
+ * It only prints CRTCs that are in the encoder->possible_crtcs bitmask.
+ */
+void drmListAvailableCrtcs(drmModeRes *resources,
+                           int drm_fd,
+                           drmModeEncoder *enc)
+{
+    printf("Available CRTCs for encoder %u:\n", enc->encoder_id);
+
+    for (int i = 0; i < resources->count_crtcs; i++) {
+        if (enc->possible_crtcs & (1 << i)) {
+            uint32_t crtc_id = resources->crtcs[i];
+            drmModeCrtc *crtc = drmModeGetCrtc(drm_fd, crtc_id);
+            if (!crtc) {
+                // Couldn’t fetch info for some reason; just continue
+                continue;
+            }
+            printf("  [%d] CRTC ID: %u\n", i, crtc->crtc_id);
+            drmModeFreeCrtc(crtc);
+        }
+    }
 }
 
-int userChooseDrmCrtcs(drmModeRes *resources, int drm_fd, drmModeEncoder * enc, struct pipeline_dev *user_dev, int runtimeMode){
-	int crtc_index = -1;
+/*
+ * userChooseDrmCrtcs:
+ *  - resources: the drmModeRes* from drmModeGetResources(drm_fd)
+ *  - drm_fd: the open DRM file descriptor
+ *  - enc: the encoder you want to pick a CRTC for
+ *  - user_dev: your pipeline_dev struct to store the chosen crtc ID
+ *  - runtimeMode: if 0 => pick first possible CRTC automatically
+ *                 if 1 => let user list and pick a CRTC index
+ *
+ * Returns the index in resources->crtcs[] (>= 0) on success, or -1 on failure.
+ */
+int userChooseDrmCrtcs(drmModeRes *resources,
+                       int drm_fd,
+                       drmModeEncoder *enc,
+                       struct pipeline_dev *user_dev,
+                       int runtimeMode)
+{
+    int crtc_index = -1;
 
-	if(!runtimeMode){
-		for (int i = 0; i < resources->count_crtcs; i++) {
-			if (enc->possible_crtcs & (1 << i)) {
-				crtc_index = i;
-				break;
-			}
-		}
-	}
-	else {
-		int userChooseCrtcIndex;
-		printf("Do you want to dump CRTC's info? y/N : ");
-		char select = 'n';
-		scanf(" %c", &select);
-		if(select == 'y' || select == 'Y')
-			drmListAvailableCrtcs();
+    if (!runtimeMode) {
+        // 1) Automatic: pick the first possible CRTC
+        for (int i = 0; i < resources->count_crtcs; i++) {
+            if (enc->possible_crtcs & (1 << i)) {
+                crtc_index = i;
+                break;
+            }
+        }
+    } else {
+        // 2) Interactive: list possible CRTCs, let user pick
+        printf("Do you want to dump CRTC info? y/N : ");
+        char select = 'n';
+        scanf(" %c", &select);
+        if (select == 'y' || select == 'Y') {
+            drmListAvailableCrtcs(resources, drm_fd, enc);
+        }
 
-		printf("Choose CRTC's index: ");
-		scanf("%u", &userChooseCrtcIndex);
-		user_dev->crtc = -1;
-	}
+        printf("Choose CRTC index: ");
+        if (scanf("%d", &crtc_index) != 1) {
+            // If invalid input, flush it and fail
+            while (getchar() != '\n');
+            fprintf(stderr, "Invalid input for CRTC index.\n");
+            return -1;
+        }
+    }
 
-	if (crtc_index < 0) {
-		fprintf(stderr, "No possible CRTC found for encoder %u.\n", enc->encoder_id);
-		//todo handle this properly
-	}
+    // Did we find a valid CRTC index?
+    if (crtc_index < 0 || crtc_index >= resources->count_crtcs) {
+        fprintf(stderr, "No valid CRTC index found for encoder %u.\n",
+                enc->encoder_id);
+        return -1;
+    }
 
-	uint32_t chosen_crtc_id = resources->crtcs[crtc_index];
-	drmModeCrtc *crtc = drmModeGetCrtc(drm_fd, chosen_crtc_id);
-	user_dev->crtc = crtc->crtc_id;
-	return crtc_index;
+    // Check that this chosen index is actually in the bitmask
+    if (!(enc->possible_crtcs & (1 << crtc_index))) {
+        fprintf(stderr, "CRTC index %d is not possible for encoder %u.\n",
+                crtc_index, enc->encoder_id);
+        return -1;
+    }
+
+    uint32_t chosen_crtc_id = resources->crtcs[crtc_index];
+    drmModeCrtc *crtc = drmModeGetCrtc(drm_fd, chosen_crtc_id);
+    if (!crtc) {
+        fprintf(stderr, "drmModeGetCrtc() failed for CRTC index %d.\n",
+                crtc_index);
+        return -1;
+    }
+
+    // Store the chosen CRTC ID in your pipeline_dev
+    user_dev->crtc = crtc->crtc_id;
+
+    // If you want to keep the original CRTC config for restoration:
+    // user_dev->saved_crtc = crtc;  // But be sure to free it later.
+
+    // In most minimal examples, we just free it now after reading the ID
+    drmModeFreeCrtc(crtc);
+
+    return crtc_index;
 }
 
 int main(int argc, char *argv[]) {
-	int runtimeMode = 0; //todo dodać dynamiczny wybór runtimeMode: manual, automatyczny, verbose (printuje najpierw całość, potem ktoś sobie wybiera)
+	int runtimeMode = 1; //todo dodać dynamiczny wybór runtimeMode: manual, automatyczny, verbose (printuje najpierw całość, potem ktoś sobie wybiera)
 	int drm_fd = -1;
 	if (argc < 2){ //todo handle it properly
 		drmGatherFiledes();
@@ -264,7 +329,11 @@ int main(int argc, char *argv[]) {
 	}
 
 	int userChosenModeIndex = userChooseDrmMode(*connector, &modeset_device, runtimeMode);
-	int userChooseEncoerIndex = userChooseDrmEncoder(drm_fd, *connector, &modeset_device, runtimeMode);
+	int userChooseEncoderIndex = userChooseDrmEncoder(drm_fd, *connector, &modeset_device, runtimeMode);
+	drmModeEncoder *enc = drmModeGetEncoder(drm_fd, modeset_device.encoder);
+	int userChooseCrtcIndex = userChooseDrmCrtcs(resources, drm_fd, enc, &modeset_device, runtimeMode);
+
+	printf("choosen crtc id: %d", userChooseCrtcIndex);
 
 
  /*drmModeCrtc *crtc = drmModeGetCrtc(drm_fd, resources->crtcs[0]);

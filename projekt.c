@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <time.h>
 #include <stdio.h>
 #include <fcntl.h>
 #include <sys/select.h>
@@ -21,7 +22,7 @@ struct pipeline_dev {
 	uint32_t connector; //todo czy to nie problem, że przechowuję same uinty - a więc IDs devów zamiast wskaźników do obiektów?
 	uint32_t crtc;
 	uint32_t framebuffer;
-	uint32_t encoder; // np "drmModeGetEncoder(drm_fd, encoder_id)" zamiast user_dev.encoder = choosen_encoder_id
+	uint32_t encoder_id; // todo np "drmModeGetEncoder(drm_fd, encoder_id)" zamiast user_dev.encoder = choosen_encoder_id
 	drmModeCrtc* saved_crtc;
 };
 
@@ -69,7 +70,7 @@ int userChooseConnector(drmModeConnector ** handled_connector_array, int lenght,
 				if(connId == handled_connector_array[i]->connector_id) {
 					printf("weszlo w petle!\n");
 					choosenIndex = i;
-					user_dev->connector = connId;
+					user_dev->connector = connId; //todo współczesne podejście zakłada raczej użycie drmModeAttachMode
 					success = 1;
 					printf("sukces!\n");
 					break;
@@ -106,23 +107,23 @@ uint32_t clock;
 } drmModeModeInfo, *drmModeModeInfoPtr;
 
 */
-void drmListAvailableModes(drmModeConnector choosenConnector){
-	int availableModeNumber = choosenConnector.count_modes;
+void drmListAvailableModes(drmModeConnector chosenConnector){
+	int availableModeNumber = chosenConnector.count_modes;
 	drmModeModeInfo modesArray [availableModeNumber];
 
 	for(int i = 0; i < availableModeNumber; i++)
-		modesArray[i] = choosenConnector.modes[i];
+		modesArray[i] = chosenConnector.modes[i];
 
 	for(int i = 0; i < availableModeNumber; i++){ //todo print nicely formatted output
-		printf("modesArray Mode[%d] info: clock: %u\t", i, modesArray[i].clock);
+		printf("modesArray Mode[%d] info: name: %s, clock: %u\t", i, modesArray[i].name, modesArray[i].clock);
 		printf("display height (Vert.): %u, display width (Hor.): %u\n", modesArray[i].hdisplay, modesArray[i].vdisplay);
 	}
 }
 
-int userChooseDrmMode(drmModeConnector choosenConnector, struct pipeline_dev *user_dev, int runtimeMode){
-	int userChooseModeIndex;
+int userChooseDrmMode(drmModeConnector chosenConnector, struct pipeline_dev *user_dev, int runtimeMode){
+	int userChooseModeIndex = -1;
 	if(!runtimeMode){
-		user_dev->mode = choosenConnector.modes[0];
+		user_dev->mode = chosenConnector.modes[0];
 		//printf("drmMode: &p\n", user_dev->mode);
 		//printf("drmMode height and width: %u x %u\n", user_dev->mode.hdisplay, user_dev->mode.vdisplay);
 		userChooseModeIndex = 0;
@@ -132,11 +133,11 @@ int userChooseDrmMode(drmModeConnector choosenConnector, struct pipeline_dev *us
 		char select = 'n';
 		scanf(" %c", &select);
 		if(select == 'y' || select == 'Y')
-			drmListAvailableModes(choosenConnector);
+			drmListAvailableModes(chosenConnector);
 
 		printf("Choose DRM Mode: ");
 		scanf("%d", &userChooseModeIndex);
-		user_dev->mode = choosenConnector.modes[userChooseModeIndex]; //todo dodać obsługę błędów przy wprowadzeniu złego Mode
+		user_dev->mode = chosenConnector.modes[userChooseModeIndex]; //todo dodać obsługę błędów przy wprowadzeniu złego Mode
 	}
 
 	//printf("drmMode: &p\n", user_dev->mode);
@@ -144,13 +145,13 @@ int userChooseDrmMode(drmModeConnector choosenConnector, struct pipeline_dev *us
 	return userChooseModeIndex;
 }
 
-void drmListAvailableEncoders(int drm_fd, drmModeConnector choosenConnector){
-	int availableEncoderNumber = choosenConnector.count_encoders;
+void drmListAvailableEncoders(int drm_fd, drmModeConnector chosenConnector){
+	int availableEncoderNumber = chosenConnector.count_encoders;
 	drmModeEncoder * encodersArray [availableEncoderNumber];
 
 	for(int i = 0; i < availableEncoderNumber; i++){
-		//int encoderId = choosenConnector.encoders[i];
-		encodersArray[i] = drmModeGetEncoder(drm_fd, choosenConnector.encoders[i]);
+		//int encoderId = chosenConnector.encoders[i];
+		encodersArray[i] = drmModeGetEncoder(drm_fd, chosenConnector.encoders[i]);
 	}
 
 	for(int i = 0; i < availableEncoderNumber; i++){ //todo print nicely formatted output
@@ -159,132 +160,112 @@ void drmListAvailableEncoders(int drm_fd, drmModeConnector choosenConnector){
 	}
 }
 
-int userChooseDrmEncoder(int drm_fd, drmModeConnector choosenConnector, struct pipeline_dev *user_dev, int runtimeMode){
-	int userChooseEncoderIndex;
+int userChooseDrmEncoder(int drm_fd, drmModeConnector chosenConnector, struct pipeline_dev *user_dev, int runtimeMode){
+	int userChooseEncoderId = -1;
 	if(!runtimeMode){
-		user_dev->encoder = choosenConnector.encoders[0];
-		userChooseEncoderIndex = choosenConnector.encoders[0];
+		// user_dev->encoder_id = chosenConnector.encoders[0]; // user_dev->encoder = id konektora z encoders[0], np 105
+		userChooseEncoderId = chosenConnector.encoders[0]; // userChooseEncoderIndex = jak wyżej	 //todo linię wyżej przypisuję wartość do zmiennej globalnej user_dev->encoder; nie wiem, czy konieczne jest handlowanie dodatkowej zmiennej userChooseEncoderIndex
+		//todo czym właściwie jest choosenConnector.encoders[0]? co dokładnie przypisuję do userChooseEncoderIndex? czy nie powinienem zmienić nazwy zmiennej? ew. przypisać userChooseEncoderIndex = 0;
+		user_dev->encoder_id = userChooseEncoderId;
 	}
 	else {
 		printf("Do you want to dump encoder info? y/N : ");
 		char select = 'n';
 		scanf(" %c", &select);
 		if(select == 'y' || select == 'Y')
-			drmListAvailableEncoders(drm_fd, choosenConnector);
+			drmListAvailableEncoders(drm_fd, chosenConnector);
 
-		printf("Choose DRM Encoder: ");
-		scanf("%d", &userChooseEncoderIndex);
-		user_dev->encoder = choosenConnector.encoders[userChooseEncoderIndex]; //todo dodać obsługę błędów przy wprowadzeniu złego Encodera:
+		printf("Choose DRM Encoder (todo: trzeba wybrać indeks tablicy): ");
+		scanf("%d", &userChooseEncoderId);
+		//user_dev->encoder_id = chosenConnector.encoders[userChooseEncoderId]; //todo dodać obsługę błędów przy wprowadzeniu złego Encodera:
+		if(!drmModeGetEncoder(drm_fd, userChooseEncoderId)) {
+			printf("Wrong encoder ID! It has been replaced with a default one.\n");
+			userChooseEncoderId = chosenConnector.encoders[0];
+		}
+		user_dev->encoder_id = userChooseEncoderId;
 	}
 
-	printf("Choosen drmEncoder: %u\n", user_dev->encoder);
-	return userChooseEncoderIndex;
+	printf("Chosen drmEncoder ID: %u\n", user_dev->encoder_id);
+	return userChooseEncoderId;
 }
 
-/*
- * Helper function that lists all possible CRTCs for the given encoder.
- * It only prints CRTCs that are in the encoder->possible_crtcs bitmask.
- */
-void drmListAvailableCrtcs(drmModeRes *resources,
-                           int drm_fd,
-                           drmModeEncoder *enc)
+void drmListAvailableCrtcs(drmModeRes *resources, int drm_fd, drmModeEncoder *enc)
 {
-    printf("Available CRTCs for encoder %u:\n", enc->encoder_id);
+	printf("Available CRTCs for encoder %u:\n", enc->encoder_id);
 
-    for (int i = 0; i < resources->count_crtcs; i++) {
-        if (enc->possible_crtcs & (1 << i)) {
-            uint32_t crtc_id = resources->crtcs[i];
-            drmModeCrtc *crtc = drmModeGetCrtc(drm_fd, crtc_id);
-            if (!crtc) {
-                // Couldn’t fetch info for some reason; just continue
-                continue;
-            }
-            printf("  [%d] CRTC ID: %u\n", i, crtc->crtc_id);
-            drmModeFreeCrtc(crtc);
-        }
-    }
+	for (int i = 0; i < resources->count_crtcs; i++) {
+		if (enc->possible_crtcs & (1 << i)) {
+			uint32_t crtc_id = resources->crtcs[i];
+			drmModeCrtc *crtc = drmModeGetCrtc(drm_fd, crtc_id);
+			if (!crtc) {
+				printf("Can't fetch info about CRTC#%u", crtc->crtc_id);
+				continue;
+			}
+			printf("  [%d] CRTC ID: %u, mode name: %s\n", i, crtc->crtc_id, crtc->mode.name); //todo bug: w kroku userChooseDrmMode wybieram mod np 1920x1080, a crtc->mode.name pokazuje np 3840x2160
+			// aby rozwiązać tego buga, prawdopodobnie muszę ręcznie "odczepić" defaultowy mode od crtc i przypisać ten którego wybrał user
+			drmModeFreeCrtc(crtc);
+		}
+	}
 }
 
-/*
- * userChooseDrmCrtcs:
- *  - resources: the drmModeRes* from drmModeGetResources(drm_fd)
- *  - drm_fd: the open DRM file descriptor
- *  - enc: the encoder you want to pick a CRTC for
- *  - user_dev: your pipeline_dev struct to store the chosen crtc ID
- *  - runtimeMode: if 0 => pick first possible CRTC automatically
- *                 if 1 => let user list and pick a CRTC index
- *
- * Returns the index in resources->crtcs[] (>= 0) on success, or -1 on failure.
- */
-int userChooseDrmCrtcs(drmModeRes *resources,
-                       int drm_fd,
-                       drmModeEncoder *enc,
-                       struct pipeline_dev *user_dev,
-                       int runtimeMode)
+int userChooseDrmCrtcs(drmModeRes *resources, int drm_fd, drmModeEncoder *enc, struct pipeline_dev *user_dev, int runtimeMode)
 {
-    int crtc_index = -1;
+	int crtc_index = -1;
 
-    if (!runtimeMode) {
-        // 1) Automatic: pick the first possible CRTC
-        for (int i = 0; i < resources->count_crtcs; i++) {
-            if (enc->possible_crtcs & (1 << i)) {
-                crtc_index = i;
-                break;
-            }
-        }
-    } else {
-        // 2) Interactive: list possible CRTCs, let user pick
-        printf("Do you want to dump CRTC info? y/N : ");
-        char select = 'n';
-        scanf(" %c", &select);
-        if (select == 'y' || select == 'Y') {
-            drmListAvailableCrtcs(resources, drm_fd, enc);
-        }
+	if (!runtimeMode) {
+		for (int i = 0; i < resources->count_crtcs; i++) {
+			if (enc->possible_crtcs & (1 << i)) {
+				crtc_index = i;
+				break;
+			}
+		}
+	} else {
+		printf("Do you want to dump CRTC info? y/N : ");
+		char select = 'n';
+		scanf(" %c", &select);
+		if (select == 'y' || select == 'Y') {
+			drmListAvailableCrtcs(resources, drm_fd, enc);
+		}
 
-        printf("Choose CRTC index: ");
-        if (scanf("%d", &crtc_index) != 1) {
-            // If invalid input, flush it and fail
-            while (getchar() != '\n');
-            fprintf(stderr, "Invalid input for CRTC index.\n");
-            return -1;
-        }
-    }
+		printf("Choose CRTC index (indeks tablicy): ");
+		if (scanf("%d", &crtc_index) != 1) {
+			while (getchar() != '\n');
+			fprintf(stderr, "Invalid input for CRTC index.\n");
+			return -1;
+		}
+	}
 
-    // Did we find a valid CRTC index?
-    if (crtc_index < 0 || crtc_index >= resources->count_crtcs) {
-        fprintf(stderr, "No valid CRTC index found for encoder %u.\n",
-                enc->encoder_id);
-        return -1;
-    }
+	if (crtc_index < 0 || crtc_index >= resources->count_crtcs) {
+		fprintf(stderr, "No valid CRTC index found for encoder %u.\n",
+		enc->encoder_id);
+		return -1;
+	}
 
-    // Check that this chosen index is actually in the bitmask
-    if (!(enc->possible_crtcs & (1 << crtc_index))) {
-        fprintf(stderr, "CRTC index %d is not possible for encoder %u.\n",
-                crtc_index, enc->encoder_id);
-        return -1;
-    }
+	// check that this chosen index is actually in the bitmask
+	if (!(enc->possible_crtcs & (1 << crtc_index))) {
+	fprintf(stderr, "CRTC index %d is not possible for encoder %u.\n",
+		crtc_index, enc->encoder_id);
+	return -1;
+	}
 
-    uint32_t chosen_crtc_id = resources->crtcs[crtc_index];
-    drmModeCrtc *crtc = drmModeGetCrtc(drm_fd, chosen_crtc_id);
-    if (!crtc) {
-        fprintf(stderr, "drmModeGetCrtc() failed for CRTC index %d.\n",
-                crtc_index);
-        return -1;
-    }
+	uint32_t chosen_crtc_id = resources->crtcs[crtc_index];
+	drmModeCrtc *crtc = drmModeGetCrtc(drm_fd, chosen_crtc_id);
+	if (!crtc) {
+	fprintf(stderr, "drmModeGetCrtc() failed for CRTC index %d.\n",
+		crtc_index);
+	return -1;
+}
 
-    // Store the chosen CRTC ID in your pipeline_dev
-    user_dev->crtc = crtc->crtc_id;
+user_dev->crtc = crtc->crtc_id;
+user_dev->saved_crtc = crtc;
 
-    // If you want to keep the original CRTC config for restoration:
-    // user_dev->saved_crtc = crtc;  // But be sure to free it later.
+drmModeFreeCrtc(crtc);
 
-    // In most minimal examples, we just free it now after reading the ID
-    drmModeFreeCrtc(crtc);
-
-    return crtc_index;
+return crtc_index;
 }
 
 int main(int argc, char *argv[]) {
+	printf("%ld",__STDC_VERSION__);
 	int runtimeMode = 1; //todo dodać dynamiczny wybór runtimeMode: manual, automatyczny, verbose (printuje najpierw całość, potem ktoś sobie wybiera)
 	int drm_fd = -1;
 	if (argc < 2){ //todo handle it properly
@@ -311,15 +292,15 @@ int main(int argc, char *argv[]) {
 
 	//gathering connectors
 	drmModeConnector *connector = NULL;
-	drmModeConnector *available_connectors_array [resources->count_connectors];
+	drmModeConnector *available_connectors_array [resources->count_connectors]; //todo array[count_connectors] jest przekazany do drmGatherConnectors i wraca wypełniony tylko do array[filled]; warto byłoby uciąć niepotrzebną końcówkę
 
-	int connected_count = drmGatherConnectors(drm_fd, resources, available_connectors_array);
+	int connected_count = drmGatherConnectors(drm_fd, resources, available_connectors_array); //todo nie wiem czy jest potrzeba bawienia się z przekazywaniem tutaj jakiejś tablicy + z tym array powyżej, czy coś z tym w ogóle robię? sprawdzic
 
-	int choosen_connector_index = userChooseConnector(available_connectors_array, connected_count, &modeset_device);
-	if (choosen_connector_index < 0) {
+	int userChosenConnectorIndex = userChooseConnector(available_connectors_array, connected_count, &modeset_device);
+	if (userChosenConnectorIndex < 0) {
 		//todo handle this case
 	}
-	connector = available_connectors_array[choosen_connector_index];
+	connector = available_connectors_array[userChosenConnectorIndex]; // todo zamiast 'connector' możnaby używać user_dev->connector; sprawdzić
 
 	if(!connector){
 		fprintf(stderr, "Connected connector not found, stopping.");
@@ -328,12 +309,20 @@ int main(int argc, char *argv[]) {
 		return -1;
 	}
 
-	int userChosenModeIndex = userChooseDrmMode(*connector, &modeset_device, runtimeMode);
-	int userChooseEncoderIndex = userChooseDrmEncoder(drm_fd, *connector, &modeset_device, runtimeMode);
-	drmModeEncoder *enc = drmModeGetEncoder(drm_fd, modeset_device.encoder);
-	int userChooseCrtcIndex = userChooseDrmCrtcs(resources, drm_fd, enc, &modeset_device, runtimeMode);
+	int userChosenModeIndex = userChooseDrmMode(*connector, &modeset_device, runtimeMode); //todo wydaje mi się, że tu wystarczyłaby sama wartość connectora - czy *connector jest konieczne?
+	int userChosenEncoderIndex = userChooseDrmEncoder(drm_fd, *connector, &modeset_device, runtimeMode);
+	drmModeEncoder *enc = drmModeGetEncoder(drm_fd, modeset_device.encoder_id);
+	int userChosenCrtcIndex = userChooseDrmCrtcs(resources, drm_fd, enc, &modeset_device, runtimeMode);
 
-	printf("choosen crtc id: %d", userChooseCrtcIndex);
+	printf("choosen crtc id: %d", userChosenCrtcIndex);
+
+	drmModeSetCrtc(drm_fd,
+               modeset_device.crtc,      // chosen crtc
+               modeset_device.framebuffer,  // FB you create
+               0, 0,                // offsets
+               &modeset_device.connector, // pointer to the connector ID
+               1,
+               &modeset_device.mode);
 
 
  /*drmModeCrtc *crtc = drmModeGetCrtc(drm_fd, resources->crtcs[0]);

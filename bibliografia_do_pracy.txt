@@ -1,2 +1,17 @@
 1. https://www.ezurio.com/resources/software-announcements/10585
 2. https://www.sciencedirect.com/topics/engineering/horizontal-sync
+3. https://gitlab.freedesktop.org/mesa/drm
+4. https://en.wikipedia.org/wiki/Mesa_(computer_graphics)
+
+5. https://upload.wikimedia.org/wikipedia/commons/thumb/c/c2/Linux_Graphics_Stack_2013.svg/1920px-Linux_Graphics_Stack_2013.svg.png
+6. https://www.kernel.org/doc/html/latest/gpu/drm-kms.html
+
+7. https://bootlin.com/pub/conferences/2017/kr/ripard-drm/ripard-drm.pdf
+        - "Two different trends", "Interface to drive GPU devices through the kernel: DRM" (slajd 7)
+        - "DRM was initially introduced to deal with the GPU’s need [...] But not modesetting!", "Introduction of the Kernel Mode-Setting (KMS) to move the modesetting back
+into the kernel" (slajd 9)
+        - slajd 11: fbdev, kms, drm mentioned
+        - slajd 12: render/display card (node) - oddzielono je, bo w embedded są oddzielne urządzenia do renderowania, a oddzielne do wyświetlania i oba
+            muszą mieć ten sam poziom uprawnień (master)
+
+

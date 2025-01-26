@@ -5,3 +5,5 @@
 # Unignore  all dirs
 !*/
 # only binary files (without extension) should be ignored at this point...
+
+test

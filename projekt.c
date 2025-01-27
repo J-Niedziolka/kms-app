@@ -8,6 +8,9 @@
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 #include <string.h>
+#include <drm_fourcc.h>
+#include <sys/mman.h>
+#include <errno.h>
 
 struct pipeline_dev {
 	struct pipeline_dev *next;
@@ -18,7 +21,8 @@ struct pipeline_dev {
 	uint32_t handle;
 	uint8_t *map;
 
-	drmModeModeInfo mode;
+	//drmModeModeInfo mode; //todo potencjalnie do przerobienia na drmModeModeInfoPtr, będzie łatwiej przechowywać wskaźnik do modu niż te wartości powyżej
+	drmModeModeInfoPtr modePtr;
 	uint32_t connector; //todo czy to nie problem, że przechowuję same uinty - a więc IDs devów zamiast wskaźników do obiektów?
 	uint32_t crtc;
 	uint32_t framebuffer;
@@ -123,9 +127,7 @@ void drmListAvailableModes(drmModeConnector chosenConnector){
 int userChooseDrmMode(drmModeConnector chosenConnector, struct pipeline_dev *user_dev, int runtimeMode){
 	int userChooseModeIndex = -1;
 	if(!runtimeMode){
-		user_dev->mode = chosenConnector.modes[0];
-		//printf("drmMode: &p\n", user_dev->mode);
-		//printf("drmMode height and width: %u x %u\n", user_dev->mode.hdisplay, user_dev->mode.vdisplay);
+		//user_dev->mode = chosenConnector.modes[0];
 		userChooseModeIndex = 0;
 	}
 	else {
@@ -137,25 +139,34 @@ int userChooseDrmMode(drmModeConnector chosenConnector, struct pipeline_dev *use
 
 		printf("Choose DRM Mode: ");
 		scanf("%d", &userChooseModeIndex);
-		user_dev->mode = chosenConnector.modes[userChooseModeIndex]; //todo dodać obsługę błędów przy wprowadzeniu złego Mode
+		//user_dev->mode = chosenConnector.modes[userChooseModeIndex]; //todo dodać obsługę błędów przy wprowadzeniu złego Mode
 	}
 
-	//printf("drmMode: &p\n", user_dev->mode);
-	printf("drmMode height and width: %u x %u\n", user_dev->mode.hdisplay, user_dev->mode.vdisplay);
-	return userChooseModeIndex;
+	//printf("drmMode height and width: %u x %u\n", user_dev->mode.hdisplay, user_dev->mode.vdisplay);
+	if(userChooseModeIndex >= 0 && userChooseModeIndex < chosenConnector.count_modes) {
+		user_dev->modePtr = &chosenConnector.modes[userChooseModeIndex];
+		printf("Confirming Mode %s\n", user_dev->modePtr->name);
+		return userChooseModeIndex;
+	}
+	else {
+		user_dev->modePtr = &chosenConnector.modes[0];
+		printf("Not a correct mode chosen! Defaulting to Mode#0: %s\n", user_dev->modePtr->name);
+		return 0;
+	}
+	//return userChooseModeIndex;
 }
 
 void drmListAvailableEncoders(int drm_fd, drmModeConnector chosenConnector){
 	int availableEncoderNumber = chosenConnector.count_encoders;
 	drmModeEncoder * encodersArray [availableEncoderNumber];
 
-	for(int i = 0; i < availableEncoderNumber; i++){
-		//int encoderId = chosenConnector.encoders[i];
-		encodersArray[i] = drmModeGetEncoder(drm_fd, chosenConnector.encoders[i]);
-	}
+	/*for(int i = 0; i < availableEncoderNumber; i++){
+		//encodersArray[i] = drmModeGetEncoder(drm_fd, chosenConnector.encoders[i]);
+	}*/
 
 	for(int i = 0; i < availableEncoderNumber; i++){ //todo print nicely formatted output
-		printf("encoderArray Encoder[%d] info: encoder ID: %u\t", i, encodersArray[i]->encoder_id);
+		encodersArray[i] = drmModeGetEncoder(drm_fd, chosenConnector.encoders[i]);
+		printf("Encoder#%u info: \t", encodersArray[i]->encoder_id);
 		printf("encoder type: %u, crtc id: %u\n", encodersArray[i]->encoder_type, encodersArray[i]->crtc_id);
 	}
 }
@@ -175,7 +186,7 @@ int userChooseDrmEncoder(int drm_fd, drmModeConnector chosenConnector, struct pi
 		if(select == 'y' || select == 'Y')
 			drmListAvailableEncoders(drm_fd, chosenConnector);
 
-		printf("Choose DRM Encoder (todo: trzeba wybrać indeks tablicy): ");
+		printf("Choose DRM Encoder ID: ");
 		scanf("%d", &userChooseEncoderId);
 		//user_dev->encoder_id = chosenConnector.encoders[userChooseEncoderId]; //todo dodać obsługę błędów przy wprowadzeniu złego Encodera:
 		if(!drmModeGetEncoder(drm_fd, userChooseEncoderId)) {
@@ -194,7 +205,7 @@ void drmListAvailableCrtcs(drmModeRes *resources, int drm_fd, drmModeEncoder *en
 	printf("Available CRTCs for encoder %u:\n", enc->encoder_id);
 
 	for (int i = 0; i < resources->count_crtcs; i++) {
-		if (enc->possible_crtcs & (1 << i)) {
+		if (enc->possible_crtcs & (1 << i)) { //todo to be refactored; wynik operacji bitwise nie powinien być traktowany jako wartość boolean
 			uint32_t crtc_id = resources->crtcs[i];
 			drmModeCrtc *crtc = drmModeGetCrtc(drm_fd, crtc_id);
 			if (!crtc) {
@@ -203,6 +214,7 @@ void drmListAvailableCrtcs(drmModeRes *resources, int drm_fd, drmModeEncoder *en
 			}
 			printf("  [%d] CRTC ID: %u, mode name: %s\n", i, crtc->crtc_id, crtc->mode.name); //todo bug: w kroku userChooseDrmMode wybieram mod np 1920x1080, a crtc->mode.name pokazuje np 3840x2160
 			// aby rozwiązać tego buga, prawdopodobnie muszę ręcznie "odczepić" defaultowy mode od crtc i przypisać ten którego wybrał user
+			//update: to crtc wskazuje aktualnie użyte crtc
 			drmModeFreeCrtc(crtc);
 		}
 	}
@@ -220,10 +232,16 @@ int userChooseDrmCrtcs(drmModeRes *resources, int drm_fd, drmModeEncoder *enc, s
 			}
 		}
 	} else {
-		printf("Do you want to dump CRTC info? y/N : ");
+		printf("Do you want to dump CRTC info? Y/n : ");
 		char select = 'n';
 		scanf(" %c", &select);
 		if (select == 'y' || select == 'Y') {
+			drmListAvailableCrtcs(resources, drm_fd, enc);
+		}
+		else if (select == 'n' || select == 'N'){
+
+		}
+		else {
 			drmListAvailableCrtcs(resources, drm_fd, enc);
 		}
 
@@ -236,16 +254,15 @@ int userChooseDrmCrtcs(drmModeRes *resources, int drm_fd, drmModeEncoder *enc, s
 	}
 
 	if (crtc_index < 0 || crtc_index >= resources->count_crtcs) {
-		fprintf(stderr, "No valid CRTC index found for encoder %u.\n",
-		enc->encoder_id);
+		fprintf(stderr, "No valid CRTC index found for encoder %u.\n", enc->encoder_id);
 		return -1;
 	}
 
 	// check that this chosen index is actually in the bitmask
 	if (!(enc->possible_crtcs & (1 << crtc_index))) {
-	fprintf(stderr, "CRTC index %d is not possible for encoder %u.\n",
-		crtc_index, enc->encoder_id);
-	return -1;
+		fprintf(stderr, "CRTC index %d is not possible for encoder %u.\n",
+			crtc_index, enc->encoder_id);
+		return -1;
 	}
 
 	uint32_t chosen_crtc_id = resources->crtcs[crtc_index];
@@ -254,14 +271,98 @@ int userChooseDrmCrtcs(drmModeRes *resources, int drm_fd, drmModeEncoder *enc, s
 	fprintf(stderr, "drmModeGetCrtc() failed for CRTC index %d.\n",
 		crtc_index);
 	return -1;
+	}
+
+	user_dev->crtc = crtc->crtc_id;
+	user_dev->saved_crtc = crtc; //todo saved_crtc musi być freed() potem
+	//todo różnica między saved_crtc, crtc_clone, possible_crtc; czym jest encoders.possible_crtcs
+
+
+	drmModeFreeCrtc(crtc);
+
+	return crtc_index;
 }
 
-user_dev->crtc = crtc->crtc_id;
-user_dev->saved_crtc = crtc;
+int createDumbFB2(int drm_fd, struct pipeline_dev *user_dev){
+	struct drm_mode_create_dumb creq = {0};
+	creq.width = user_dev->modePtr->hdisplay;
+	creq.height = user_dev->modePtr->vdisplay;
+	creq.bpp = 32;
 
-drmModeFreeCrtc(crtc);
+	if (drmIoctl(drm_fd, DRM_IOCTL_MODE_CREATE_DUMB, &creq) != 0) {
+		perror("DRM_IOCTL_MODE_CREATE_DUMB failed");
+		return -errno;
+	}
 
-return crtc_index;
+	user_dev->width = creq.width;
+	user_dev->heigtht = creq.height;
+	user_dev->size = creq.size;
+	user_dev->handle = creq.handle;
+
+	struct drm_mode_map_dumb mreq = {0};
+	mreq.handle = user_dev->handle;
+	if (drmIoctl(drm_fd, DRM_IOCTL_MODE_MAP_DUMB, &mreq) != 0){
+		perror("DRM_IOCTL_MODE_MAP_DUMB failed");
+		return -errno;
+	}
+
+	user_dev->map = mmap(NULL, user_dev->size, PROT_READ | PROT_WRITE, MAP_SHARED, drm_fd, mreq.offset);
+	if (user_dev->map == MAP_FAILED) {
+		perror("mmap failed");
+		return -errno;
+	}
+
+	memset(user_dev->map, 0x00, user_dev->size);
+
+	uint32_t bo_handles[4] = { user_dev->handle, 0, 0, 0 };
+	uint32_t pitches[4]    = { creq.pitch, 0, 0, 0 };
+	uint32_t offsets[4]    = { 0,         0, 0, 0 };
+	uint32_t format = DRM_FORMAT_XRGB8888;
+
+	int ret = drmModeAddFB2(drm_fd, user_dev->width, user_dev->heigtht, format, bo_handles, pitches, offsets, &user_dev->framebuffer, 0);
+
+	if (ret) {
+		perror("drmModeAddFB2 failed");
+		munmap(user_dev->map, user_dev->size);
+		user_dev->map = NULL;
+		return -errno;
+	}
+
+	printf("Created FB %u (%ux%u)\n", user_dev->framebuffer, user_dev->width, user_dev->heigtht);
+	return 0;
+}
+
+static inline uint32_t make_xrgb8888(uint8_t r, uint8_t g, uint8_t b)
+{
+    /* XRGB8888: 8 bits each for R, G, B, plus an unused alpha channel. */
+    return (0xff << 24) | (r << 16) | (g << 8) | (b << 0);
+}
+
+void fill_stripes_xrgb8888(uint8_t *fb_ptr,
+                           int width,
+                           int height,
+                           int stride)
+{
+    /* Define some colors for stripes: black, red, green, blue, yellow, magenta */
+    uint32_t colors[] = {
+        make_xrgb8888(0x00, 0x00, 0x00), // black
+        make_xrgb8888(0xff, 0x00, 0x00), // red
+        make_xrgb8888(0x00, 0xff, 0x00), // green
+        make_xrgb8888(0x00, 0x00, 0xff), // blue
+        make_xrgb8888(0xff, 0xff, 0x00), // yellow
+        make_xrgb8888(0xff, 0x00, 0xff), // magenta
+    };
+    int num_colors = sizeof(colors) / sizeof(colors[0]);
+
+    /* Each stripe will be width/num_colors wide. */
+    for (int y = 0; y < height; y++) {
+        /* row_ptr: pointer to the start of row y */
+        uint32_t *row_ptr = (uint32_t *)(fb_ptr + y * stride);
+        for (int x = 0; x < width; x++) {
+            int stripe_idx = (x * num_colors) / width; // which stripe are we in?
+            row_ptr[x] = colors[stripe_idx];
+        }
+    }
 }
 
 int main(int argc, char *argv[]) {
@@ -310,19 +411,48 @@ int main(int argc, char *argv[]) {
 	}
 
 	int userChosenModeIndex = userChooseDrmMode(*connector, &modeset_device, runtimeMode); //todo wydaje mi się, że tu wystarczyłaby sama wartość connectora - czy *connector jest konieczne?
+	//if(userChosenModeIndex >= 0 && userChosenModeIndex < connector->count_modes)
+	//	modeset_device.modePtr = &connector->modes[userChosenModeIndex];
 	int userChosenEncoderIndex = userChooseDrmEncoder(drm_fd, *connector, &modeset_device, runtimeMode);
 	drmModeEncoder *enc = drmModeGetEncoder(drm_fd, modeset_device.encoder_id);
 	int userChosenCrtcIndex = userChooseDrmCrtcs(resources, drm_fd, enc, &modeset_device, runtimeMode);
 
 	printf("choosen crtc id: %d", userChosenCrtcIndex);
 
+	int err = createDumbFB2(drm_fd, &modeset_device);
+	if (err != 0) {
+		fprintf(stderr, "createDumbFB2 failed: %d\n", err);
+		//todo obsługa błędów, zwolnienie zasobów
+	}
+
+	int ret = drmModeSetCrtc(drm_fd, modeset_device.crtc, modeset_device.framebuffer, 0, 0, &modeset_device.connector, 1, modeset_device.modePtr);
+	while (1) {
+		pause();
+	}
+
+	if (ret) {
+		perror("drmModeSetCRTC fail!!");
+		//todo obsługa
+	}
+
 	drmModeSetCrtc(drm_fd,
-               modeset_device.crtc,      // chosen crtc
-               modeset_device.framebuffer,  // FB you create
-               0, 0,                // offsets
-               &modeset_device.connector, // pointer to the connector ID
-               1,
-               &modeset_device.mode);
+		modeset_device.saved_crtc->crtc_id,
+		modeset_device.saved_crtc->buffer_id,
+		modeset_device.saved_crtc->x,
+		modeset_device.saved_crtc->y,
+		&modeset_device.connector,
+		1,
+		&modeset_device.saved_crtc->mode);
+	drmModeFreeCrtc(modeset_device.saved_crtc);
+
+	drmModeRmFB(drm_fd, modeset_device.framebuffer);
+	munmap(modeset_device.map, modeset_device.size);
+	modeset_device.map = NULL;
+
+	struct drm_mode_destroy_dumb dreq = {0};
+	dreq.handle = modeset_device.handle;
+	drmIoctl(drm_fd, DRM_IOCTL_MODE_DESTROY_DUMB, &dreq);
+
 
 
  /*drmModeCrtc *crtc = drmModeGetCrtc(drm_fd, resources->crtcs[0]);

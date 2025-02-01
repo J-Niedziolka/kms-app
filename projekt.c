@@ -12,6 +12,14 @@
 #include <sys/mman.h>
 #include <errno.h>
 
+#define ANSI_RED "\x1b[31m"
+#define ANSI_GREEN "\x1b[32m"
+#define ANSI_YELLOW "\x1b[33m"
+#define ANSI_BLUE "\x1b[34m"
+#define ANSI_MAGENTA "\x1b[35m"
+#define ANSI_CYAN "\x1b[36m"
+#define ANSI_RESET "\x1b[0m"
+
 struct pipeline_dev {
 	struct pipeline_dev *next;
 
@@ -166,7 +174,7 @@ void drmListAvailableEncoders(int drm_fd, drmModeConnector chosenConnector){
 
 	for(int i = 0; i < availableEncoderNumber; i++){ //todo print nicely formatted output
 		encodersArray[i] = drmModeGetEncoder(drm_fd, chosenConnector.encoders[i]);
-		printf("Encoder#%u info: \t", encodersArray[i]->encoder_id);
+		printf("Encoder#" ANSI_GREEN "%u" ANSI_RESET "info: \t", encodersArray[i]->encoder_id);
 		printf("encoder type: %u, crtc id: %u\n", encodersArray[i]->encoder_type, encodersArray[i]->crtc_id);
 	}
 }
@@ -212,7 +220,7 @@ void drmListAvailableCrtcs(drmModeRes *resources, int drm_fd, drmModeEncoder *en
 				printf("Can't fetch info about CRTC#%u", crtc->crtc_id);
 				continue;
 			}
-			printf("  [%d] CRTC ID: %u, mode name: %s\n", i, crtc->crtc_id, crtc->mode.name); //todo bug: w kroku userChooseDrmMode wybieram mod np 1920x1080, a crtc->mode.name pokazuje np 3840x2160
+			printf("  [%d] CRTC ID: " ANSI_GREEN "%u" ANSI_RESET ", mode name: %s\n", i, crtc->crtc_id, crtc->mode.name); //todo bug: w kroku userChooseDrmMode wybieram mod np 1920x1080, a crtc->mode.name pokazuje np 3840x2160
 			// aby rozwiązać tego buga, prawdopodobnie muszę ręcznie "odczepić" defaultowy mode od crtc i przypisać ten którego wybrał user
 			//update: to crtc wskazuje aktualnie użyte crtc
 			drmModeFreeCrtc(crtc);
@@ -332,39 +340,6 @@ int createDumbFB2(int drm_fd, struct pipeline_dev *user_dev){
 	return 0;
 }
 
-static inline uint32_t make_xrgb8888(uint8_t r, uint8_t g, uint8_t b)
-{
-    /* XRGB8888: 8 bits each for R, G, B, plus an unused alpha channel. */
-    return (0xff << 24) | (r << 16) | (g << 8) | (b << 0);
-}
-
-void fill_stripes_xrgb8888(uint8_t *fb_ptr,
-                           int width,
-                           int height,
-                           int stride)
-{
-    /* Define some colors for stripes: black, red, green, blue, yellow, magenta */
-    uint32_t colors[] = {
-        make_xrgb8888(0x00, 0x00, 0x00), // black
-        make_xrgb8888(0xff, 0x00, 0x00), // red
-        make_xrgb8888(0x00, 0xff, 0x00), // green
-        make_xrgb8888(0x00, 0x00, 0xff), // blue
-        make_xrgb8888(0xff, 0xff, 0x00), // yellow
-        make_xrgb8888(0xff, 0x00, 0xff), // magenta
-    };
-    int num_colors = sizeof(colors) / sizeof(colors[0]);
-
-    /* Each stripe will be width/num_colors wide. */
-    for (int y = 0; y < height; y++) {
-        /* row_ptr: pointer to the start of row y */
-        uint32_t *row_ptr = (uint32_t *)(fb_ptr + y * stride);
-        for (int x = 0; x < width; x++) {
-            int stripe_idx = (x * num_colors) / width; // which stripe are we in?
-            row_ptr[x] = colors[stripe_idx];
-        }
-    }
-}
-
 int main(int argc, char *argv[]) {
 	printf("%ld",__STDC_VERSION__);
 	int runtimeMode = 1; //todo dodać dynamiczny wybór runtimeMode: manual, automatyczny, verbose (printuje najpierw całość, potem ktoś sobie wybiera)
@@ -426,34 +401,11 @@ int main(int argc, char *argv[]) {
 	}
 
 	int ret = drmModeSetCrtc(drm_fd, modeset_device.crtc, modeset_device.framebuffer, 0, 0, &modeset_device.connector, 1, modeset_device.modePtr);
-	while (1) {
-		pause();
-	}
 
 	if (ret) {
 		perror("drmModeSetCRTC fail!!");
 		//todo obsługa
 	}
-
-	drmModeSetCrtc(drm_fd,
-		modeset_device.saved_crtc->crtc_id,
-		modeset_device.saved_crtc->buffer_id,
-		modeset_device.saved_crtc->x,
-		modeset_device.saved_crtc->y,
-		&modeset_device.connector,
-		1,
-		&modeset_device.saved_crtc->mode);
-	drmModeFreeCrtc(modeset_device.saved_crtc);
-
-	drmModeRmFB(drm_fd, modeset_device.framebuffer);
-	munmap(modeset_device.map, modeset_device.size);
-	modeset_device.map = NULL;
-
-	struct drm_mode_destroy_dumb dreq = {0};
-	dreq.handle = modeset_device.handle;
-	drmIoctl(drm_fd, DRM_IOCTL_MODE_DESTROY_DUMB, &dreq);
-
-
 
  /*drmModeCrtc *crtc = drmModeGetCrtc(drm_fd, resources->crtcs[0]);
 

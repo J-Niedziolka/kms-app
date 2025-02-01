@@ -15,3 +15,7 @@ into the kernel" (slajd 9)
             muszą mieć ten sam poziom uprawnień (master)
 
 
+8. https://www.sciopen.com/article/10.26599/TST.2022.9010028
+9. https://wiki.st.com/stm32mpu/wiki/DRM_KMS_overview
+10. https://lwn.net/Articles/283798/
+11. https://lwn.net/Articles/283793/

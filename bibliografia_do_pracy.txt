@@ -19,3 +19,4 @@ into the kernel" (slajd 9)
 9. https://wiki.st.com/stm32mpu/wiki/DRM_KMS_overview
 10. https://lwn.net/Articles/283798/
 11. https://lwn.net/Articles/283793/
+12. https://www.sciencedirect.com/topics/engineering/horizontal-sync

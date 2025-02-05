@@ -513,6 +513,8 @@ int main(int argc, char *argv[]) {
 		//todo obsługa
 	}
 
+	//test:
+	//drmModeFreeCrtc(drmModeGetCrtc(drm_fd, modeset_device.crtc));
 drmModeSetCrtc(drm_fd,
 		modeset_device.saved_crtc->crtc_id,
 		modeset_device.saved_crtc->buffer_id,

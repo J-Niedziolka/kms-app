@@ -20,3 +20,7 @@ into the kernel" (slajd 9)
 10. https://lwn.net/Articles/283798/
 11. https://lwn.net/Articles/283793/
 12. https://www.sciencedirect.com/topics/engineering/horizontal-sync
+13. co to jest EGL????
+
+14. https://git.ti.com/cgit/glsdk/kmscube/commit/?id=456cabc661caac5c60729751d45efd668faa8e97
+15. https://chromium.googlesource.com/chromiumos/third_party/libdrm/+/df21b293e9cf550ec8d6a3e49461350dbdf14260/xf86drm.c

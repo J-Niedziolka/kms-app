@@ -12,6 +12,9 @@
 #include <sys/mman.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <wait.h>
+#include <dirent.h>
+#include <errno.h>
 
 #define ANSI_RED "\x1b[31m"
 #define ANSI_GREEN "\x1b[32m"
@@ -44,6 +47,37 @@ void drmGatherFiledes() {
 	printf("todo handle it properly\n");
 }
 
+void listDrmNodes(void)
+{
+	const char *drm_dir = "/dev/dri";
+	DIR *dir = opendir(drm_dir);
+	if (!dir) {
+		fprintf(stderr, "Cannot open %s: %s\n", drm_dir, strerror(errno));
+		return;
+	}
+
+	printf("DRM device nodes in %s:\n", drm_dir);
+
+	struct dirent *entry;
+	while ((entry = readdir(dir)) != NULL) {
+		if (strncmp(entry->d_name, "card", 4) == 0)
+		    printf(ANSI_GREEN "  %s/%s\n" ANSI_RESET, drm_dir, entry->d_name);
+		if (strncmp(entry->d_name, "renderD", 7) == 0)
+		    printf("  %s/%s\n", drm_dir, entry->d_name);
+	}
+
+	closedir(dir);
+}
+
+const char* connector_state(int connection)
+{
+    switch (connection) {
+	case DRM_MODE_CONNECTED:	return "connector connected!";
+    case DRM_MODE_DISCONNECTED:       return "connector disconnected!";
+    default:                             return "unknown connector's state!";
+    }
+}
+
 const char* connector_type_str(int type)
 {
     switch (type) {
@@ -66,15 +100,6 @@ const char* connector_type_str(int type)
     case DRM_MODE_CONNECTOR_DSI:            return "DSI";
     case DRM_MODE_CONNECTOR_DPI:            return "DPI";
     default:                                return "Unknown";
-    }
-}
-
-const char* connector_state(int connection)
-{
-    switch (connection) {
-	case DRM_MODE_CONNECTED:	return "connector connected!";
-    case DRM_MODE_DISCONNECTED:       return "connector disconnected!";
-    default:                             return "unknown connector's state!";
     }
 }
 
@@ -112,33 +137,28 @@ int userChooseConnector(drmModeConnector ** handled_connector_array, int lenght,
 	int success = 0;
 
 	while (!success) {
-		printf("Choose either of handled connectors: ");
+		printf("Select either of supported connectors: ");
 		if (scanf("%u", &connId) == 1) {
-			printf("Chosen connector: %d\n", connId);
-			for(int i= 0; i < lenght; i++) {
-				if(connId == handled_connector_array[i]->connector_id) {
-					//printf("weszlo w petle!\n");
-					choosenIndex = i;
-					user_dev->connector = connId; //todo współczesne podejście zakłada raczej użycie drmModeAttachMode
-					success = 1;
-					//printf("sukces!\n");
+			printf("Selected connector: %d\n", connId);
+			for(int i = 0; i < lenght; i++) {
+				if (i == lenght-1 && connId != handled_connector_array[i]->connector_id) {
 					break;
-				//todo: refactor, poprawić indentację poniżej
-				//} //todo tu jest bug: jeśli 4 linie poniżej są zakomentowane, to z jakiegoś powodu konektor ustawia się poprawnie, ale i tak printuje loga poniżej przy wybraniu innego niż pierwszy z dostępnych konektorów
-			} else if (i == lenght-1 && connId != handled_connector_array[i]->connector_id) {
-				printf("Choosen connector is not in the array of supported connectors!\n");
-			} else {
-				continue;
+				} else if(connId == handled_connector_array[i]->connector_id) {
+					choosenIndex = i;
+					user_dev->connector = connId;
+					success = 1;
+					break;
+				} else {
+					continue;
+				}
 			}
 			if (!success) {
-				printf("Choosen connector is not in the array of supported connectors!\n");
+				printf(ANSI_RED "Selected connector is not in the array of supported connectors!\n" ANSI_RESET);
 			}
+		} else {
+			while (getchar() != '\n');
+			printf("Invalid input, try again.\n");
 		}
-	} else {
-		// clear invalid input
-		while (getchar() != '\n');
-		printf("Invalid input, try again.\n");
-	    }
 	}
 	return choosenIndex;
 }
@@ -160,16 +180,20 @@ void drmListAvailableModes(drmModeConnector chosenConnector){
 	int availableModeNumber = chosenConnector.count_modes;
 	drmModeModeInfo modesArray [availableModeNumber];
 
-	for(int i = 0; i < availableModeNumber; i++)
+	//todo czy nie lepiej uzyc drmModeAttach... czy czegos w tym rodzaju?
+
+	for(int i = 0; i < availableModeNumber; i++) {
 		modesArray[i] = chosenConnector.modes[i];
 
-	for(int i = 0; i < availableModeNumber; i++){ //todo print nicely formatted output
-		printf("modesArray Mode[" ANSI_GREEN "%d" ANSI_RESET "] info: name: %s, clock: %u\t", i, modesArray[i].name, modesArray[i].clock);
-		printf("display height (Vert.): %u, display width (Hor.): %u\n", modesArray[i].hdisplay, modesArray[i].vdisplay);
+		printf("Mode index: " ANSI_GREEN "%d" ANSI_RESET ", info:\n", i);
+		printf("\tMode: %s, clock: %u, vrefresh: %u; ", modesArray[i].name, modesArray[i].clock, modesArray[i].vrefresh);
+		printf("Hor. Display: %u, hsync start: %u, hsync end: %u, htolat: %u, hskew: %u", modesArray[i].hdisplay, modesArray[i].hsync_start, modesArray[i].hsync_end, modesArray[i].htotal, modesArray[i].hskew);
+		printf("Vert. Display: %u, vsync start: %u, vsync end: %u, vtotal: %u, vscan: %u\n", modesArray[i].vdisplay, modesArray[i].vsync_start, modesArray[i].vsync_end, modesArray[i].vtotal, modesArray[i].vscan);
+		printf("Hor. Display: %u, hsync start: %u, hsync end: %u, htolat: %u, hskew: %u\n", modesArray[i].hdisplay, modesArray[i].hsync_start, modesArray[i].hsync_end, modesArray[i].htotal, modesArray[i].hskew);
 	}
 }
 
-int userChooseDrmMode(drmModeConnector chosenConnector, struct pipeline_dev *user_dev, int runtimeMode){
+void userChooseDrmMode(drmModeConnector chosenConnector, struct pipeline_dev *user_dev, int runtimeMode){
 	int userChooseModeIndex = -1;
 	if(!runtimeMode){
 		//user_dev->mode = chosenConnector.modes[0];
@@ -184,21 +208,16 @@ int userChooseDrmMode(drmModeConnector chosenConnector, struct pipeline_dev *use
 
 		printf("Choose DRM Mode: ");
 		scanf("%d", &userChooseModeIndex);
-		//user_dev->mode = chosenConnector.modes[userChooseModeIndex]; //todo dodać obsługę błędów przy wprowadzeniu złego Mode
 	}
 
-	//printf("drmMode height and width: %u x %u\n", user_dev->mode.hdisplay, user_dev->mode.vdisplay);
 	if(userChooseModeIndex >= 0 && userChooseModeIndex < chosenConnector.count_modes) {
 		user_dev->modePtr = &chosenConnector.modes[userChooseModeIndex];
 		printf("Confirming Mode %s\n", user_dev->modePtr->name);
-		return userChooseModeIndex;
 	}
 	else {
 		user_dev->modePtr = &chosenConnector.modes[0];
-		printf("Not a correct mode chosen! Defaulting to Mode#0: %s\n", user_dev->modePtr->name);
-		return 0;
+		printf(ANSI_RED "Not a correct mode chosen! Defaulting to Mode#0: %s\n" ANSI_RESET, user_dev->modePtr->name);
 	}
-	//return userChooseModeIndex;
 }
 
 void drmListAvailableEncoders(int drm_fd, drmModeConnector chosenConnector){
@@ -235,7 +254,7 @@ int userChooseDrmEncoder(int drm_fd, drmModeConnector chosenConnector, struct pi
 		scanf("%d", &userChooseEncoderId);
 		//user_dev->encoder_id = chosenConnector.encoders[userChooseEncoderId]; //todo dodać obsługę błędów przy wprowadzeniu złego Encodera:
 		if(!drmModeGetEncoder(drm_fd, userChooseEncoderId)) {
-			printf("Wrong encoder ID! It has been replaced with a default one.\n");
+			printf(ANSI_RED "Wrong encoder ID! It has been replaced with a default one.\n" ANSI_RESET);
 			userChooseEncoderId = chosenConnector.encoders[0];
 		}
 		user_dev->encoder_id = userChooseEncoderId;
@@ -301,7 +320,7 @@ int userChooseDrmCrtcs(drmModeRes *resources, int drm_fd, drmModeEncoder *enc, s
 	}
 
 	if (crtc_index < 0 || crtc_index >= resources->count_crtcs) {
-		fprintf(stderr, "Not a valid CRTC index for an encoder#%u.\n", enc->encoder_id);
+		fprintf(stderr, ANSI_RED "Not a valid CRTC index for an encoder#%u.\n" ANSI_RESET, enc->encoder_id);
 		for (int i = 0; i < resources->count_crtcs; i++) {
 			if (enc->possible_crtcs & (1 << i)) {
 				crtc_index = i;
@@ -447,8 +466,8 @@ int main(int argc, char *argv[]) {
 	int runtimeMode = 1; //todo dodać dynamiczny wybór runtimeMode: manual, automatyczny, verbose (printuje najpierw całość, potem ktoś sobie wybiera)
 	int drm_fd = -1;
 	if (argc < 2){ //todo handle it properly
-		drmGatherFiledes();
-		printf("testing if we fall into contidtion\n");
+		listDrmNodes();
+		printf(ANSI_RED "Run the program with selected device node as parameter!\n" ANSI_RESET);
 		return 0;
 	}
 	else {
@@ -487,11 +506,12 @@ int main(int argc, char *argv[]) {
 		return -1;
 	}
 
-	int userChosenModeIndex = userChooseDrmMode(*connector, &modeset_device, runtimeMode); //todo wydaje mi się, że tu wystarczyłaby sama wartość connectora - czy *connector jest konieczne?
+	userChooseDrmMode(*connector, &modeset_device, runtimeMode); //todo wydaje mi się, że tu wystarczyłaby sama wartość connectora - czy *connector jest konieczne?
+
 	//if(userChosenModeIndex >= 0 && userChosenModeIndex < connector->count_modes)
 	//	modeset_device.modePtr = &connector->modes[userChosenModeIndex];
 	int userChosenEncoderIndex = userChooseDrmEncoder(drm_fd, *connector, &modeset_device, runtimeMode);
-	drmModeEncoder *enc = drmModeGetEncoder(drm_fd, modeset_device.encoder_id);
+	drmModeEncoder *enc = drmModeGetEncoder(drm_fd, userChosenEncoderIndex);
 	int userChosenCrtcIndex = userChooseDrmCrtcs(resources, drm_fd, enc, &modeset_device, runtimeMode);
 
 	printf("choosen crtc id: %d\n", userChosenCrtcIndex);
